@@ -1,14 +1,16 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { format, parseISO, differenceInDays, addDays, startOfToday, isSameDay } from 'date-fns'
+import ContextMenu from './ContextMenu'
 import './GanttChart.css'
 
-function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn, onUpdateTask, onAddRow, onAddColumn, onDeleteColumn }) {
+function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn, onUpdateTask, onAddRow, onAddColumn, onDeleteColumn, onInsertRow, onInsertColumn }) {
   const tableWrapperRef = useRef(null)
   const lastTaskIdRef = useRef(null)
   const today = startOfToday()
   const [editingCell, setEditingCell] = useState(null)
   const [editValue, setEditValue] = useState('')
   const editInputRef = useRef(null)
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, type: null, index: null })
 
   const { dateRange, days } = useMemo(() => {
     const todayDate = startOfToday()
@@ -141,10 +143,10 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
   // Scroll to newly added row and auto-edit
   useEffect(() => {
     if (lastTaskIdRef.current && tasks.length > 0) {
-      const lastTask = tasks[tasks.length - 1]
-      if (lastTask.id === lastTaskIdRef.current) {
+      const task = tasks.find(t => t.id === lastTaskIdRef.current)
+      if (task) {
         setTimeout(() => {
-          const rowElement = document.querySelector(`[data-task-id="${lastTask.id}"]`)
+          const rowElement = document.querySelector(`[data-task-id="${task.id}"]`)
           if (rowElement && tableWrapperRef.current) {
             rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
             // Auto-focus the name cell
@@ -161,6 +163,105 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
       }
     }
   }, [tasks])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Check for Ctrl+Alt+= or Cmd+Option+=
+      const isShortcut = (e.ctrlKey || e.metaKey) && e.altKey && e.key === '='
+      
+      if (isShortcut) {
+        e.preventDefault()
+        // Check if a row or column is selected/focused
+        const activeElement = document.activeElement
+        const rowElement = activeElement.closest('tr[data-row-index]')
+        const colHeader = activeElement.closest('th[data-col-index]')
+        
+        if (rowElement) {
+          const rowIndex = parseInt(rowElement.getAttribute('data-row-index'))
+          if (!isNaN(rowIndex)) {
+            const rect = rowElement.getBoundingClientRect()
+            showRowContextMenu(rect.left, rect.top, rowIndex)
+          }
+        } else if (colHeader) {
+          const colIndex = parseInt(colHeader.getAttribute('data-col-index'))
+          if (!isNaN(colIndex)) {
+            const rect = colHeader.getBoundingClientRect()
+            showColumnContextMenu(rect.left, rect.top + rect.height, colIndex)
+          }
+        } else {
+          // Default: add row at end
+          onAddRow?.()
+        }
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onAddRow])
+
+  const showRowContextMenu = (x, y, rowIndex) => {
+    setContextMenu({
+      visible: true,
+      x,
+      y,
+      type: 'row',
+      index: rowIndex
+    })
+  }
+
+  const showColumnContextMenu = (x, y, colIndex) => {
+    setContextMenu({
+      visible: true,
+      x,
+      y,
+      type: 'column',
+      index: colIndex
+    })
+  }
+
+  const handleContextMenuAction = (action) => {
+    if (contextMenu.type === 'row' && contextMenu.index !== null) {
+      if (action === 'insert-above') {
+        const taskId = onInsertRow?.('above', contextMenu.index)
+        if (taskId) lastTaskIdRef.current = taskId
+      } else if (action === 'insert-below') {
+        const taskId = onInsertRow?.('below', contextMenu.index)
+        if (taskId) lastTaskIdRef.current = taskId
+      }
+    } else if (contextMenu.type === 'column' && contextMenu.index !== null) {
+      if (action === 'insert-left') {
+        onInsertColumn?.('left', contextMenu.index)
+      } else if (action === 'insert-right') {
+        onInsertColumn?.('right', contextMenu.index)
+      }
+    }
+    setContextMenu({ visible: false, x: 0, y: 0, type: null, index: null })
+  }
+
+  // Helper to calculate column indices for context menu
+  const columnIndices = useMemo(() => {
+    let currentIndex = 0
+    const indices = {}
+    
+    if (visibleColumns.task) {
+      indices.task = currentIndex++
+    }
+    if (visibleColumns.startDate) {
+      indices.startDate = currentIndex++
+    }
+    if (visibleColumns.duration) {
+      indices.duration = currentIndex++
+    }
+    if (visibleColumns.endDate) {
+      indices.endDate = currentIndex++
+    }
+    if (visibleColumns.owner) {
+      indices.owner = currentIndex++
+    }
+    
+    return { indices, baseIndex: currentIndex }
+  }, [visibleColumns])
 
   const todayPosition = () => {
     const todayOffset = differenceInDays(today, dateRange.start)
@@ -187,12 +288,30 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
     }
   }
 
-  const renderEmptyRow = (rowIndex) => {
+  const renderEmptyRow = (rowIndex, globalIndex) => {
     const rowId = `empty-${rowIndex}`
     const isEditing = editingCell?.taskId === rowId
     
     return (
-      <tr key={rowId} className="empty-row">
+      <tr 
+        key={rowId} 
+        className="empty-row"
+        data-row-index={globalIndex}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          showRowContextMenu(e.clientX, e.clientY, globalIndex)
+        }}
+      >
+        <td 
+          className="row-number-cell"
+          onContextMenu={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            showRowContextMenu(e.clientX, e.clientY, globalIndex)
+          }}
+        >
+          {globalIndex + 1}
+        </td>
         {visibleColumns.task && (
           <td className="cell-task">
             {isEditing && editingCell?.field === 'name' ? (
@@ -351,7 +470,26 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
     const isEditing = editingCell?.taskId === task.id
     
       return (
-        <tr key={task.id} data-task-id={task.id} className={task.status === 'completed' ? 'completed' : ''}>
+        <tr 
+          key={task.id} 
+          data-task-id={task.id} 
+          data-row-index={idx}
+          className={task.status === 'completed' ? 'completed' : ''}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            showRowContextMenu(e.clientX, e.clientY, idx)
+          }}
+        >
+          <td 
+            className="row-number-cell"
+            onContextMenu={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              showRowContextMenu(e.clientX, e.clientY, idx)
+            }}
+          >
+            {idx + 1}
+          </td>
         {visibleColumns.task && (
           <td className="cell-task">
             {isEditing && editingCell?.field === 'name' ? (
@@ -548,32 +686,78 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
         <table className="gantt-table">
           <thead>
           <tr>
+            <th className="row-number-header"></th>
             {visibleColumns.task && (
-              <th className="col-task">
+              <th 
+                className="col-task"
+                data-col-index={columnIndices.indices.task}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  if (columnIndices.indices.task !== undefined) {
+                    showColumnContextMenu(e.clientX, e.clientY, columnIndices.indices.task)
+                  }
+                }}
+              >
                 Task
                 <button className="col-toggle" onClick={() => onToggleColumn('task')}>×</button>
               </th>
             )}
             {visibleColumns.startDate && (
-              <th className="col-date">
+              <th 
+                className="col-date"
+                data-col-index={columnIndices.indices.startDate}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  if (columnIndices.indices.startDate !== undefined) {
+                    showColumnContextMenu(e.clientX, e.clientY, columnIndices.indices.startDate)
+                  }
+                }}
+              >
                 Start Date
                 <button className="col-toggle" onClick={() => onToggleColumn('startDate')}>×</button>
               </th>
             )}
             {visibleColumns.duration && (
-              <th className="col-duration">
+              <th 
+                className="col-duration"
+                data-col-index={columnIndices.indices.duration}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  if (columnIndices.indices.duration !== undefined) {
+                    showColumnContextMenu(e.clientX, e.clientY, columnIndices.indices.duration)
+                  }
+                }}
+              >
                 Duration
                 <button className="col-toggle" onClick={() => onToggleColumn('duration')}>×</button>
               </th>
             )}
             {visibleColumns.endDate && (
-              <th className="col-date">
+              <th 
+                className="col-date"
+                data-col-index={columnIndices.indices.endDate}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  if (columnIndices.indices.endDate !== undefined) {
+                    showColumnContextMenu(e.clientX, e.clientY, columnIndices.indices.endDate)
+                  }
+                }}
+              >
                 End Date
                 <button className="col-toggle" onClick={() => onToggleColumn('endDate')}>×</button>
               </th>
             )}
             {visibleColumns.owner && (
-              <th className="col-owner">
+              <th 
+                className="col-owner"
+                data-col-index={columnIndices.indices.owner}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  if (columnIndices.indices.owner !== undefined) {
+                    showColumnContextMenu(e.clientX, e.clientY, columnIndices.indices.owner)
+                  }
+                }}
+              >
                 Owner
                 <button className="col-toggle" onClick={() => onToggleColumn('owner')}>×</button>
               </th>
@@ -583,12 +767,23 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
                 Timeline
               </th>
             )}
-            {customColumns.filter(col => col.visible).map(col => (
-              <th key={col.id} className="col-custom">
-                {col.name}
-                <button className="col-toggle" onClick={() => onDeleteColumn(col.id)} title="Delete column">×</button>
-              </th>
-            ))}
+            {customColumns.filter(col => col.visible).map((col, idx) => {
+              const colIndex = columnIndices.baseIndex + idx
+              return (
+                <th 
+                  key={col.id} 
+                  className="col-custom"
+                  data-col-index={colIndex}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    showColumnContextMenu(e.clientX, e.clientY, colIndex)
+                  }}
+                >
+                  {col.name}
+                  <button className="col-toggle" onClick={() => onDeleteColumn(col.id)} title="Delete column">×</button>
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
@@ -597,11 +792,40 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
           
           {/* Always show empty editable rows */}
           {Array.from({ length: emptyRowsCount }, (_, idx) => 
-            renderEmptyRow(idx)
+            renderEmptyRow(idx, tasks.length + idx)
           )}
           </tbody>
         </table>
       </div>
+      
+      {/* Context Menu */}
+      <ContextMenu
+        x={contextMenu.x}
+        y={contextMenu.y}
+        visible={contextMenu.visible}
+        items={contextMenu.type === 'row' ? [
+          {
+            label: 'Insert 1 row above',
+            onClick: () => handleContextMenuAction('insert-above'),
+            shortcut: '⌘+Option+='
+          },
+          {
+            label: 'Insert 1 row below',
+            onClick: () => handleContextMenuAction('insert-below'),
+            shortcut: '⌘+Option+='
+          }
+        ] : contextMenu.type === 'column' ? [
+          {
+            label: 'Insert 1 column left',
+            onClick: () => handleContextMenuAction('insert-left')
+          },
+          {
+            label: 'Insert 1 column right',
+            onClick: () => handleContextMenuAction('insert-right')
+          }
+        ] : []}
+        onClose={() => setContextMenu({ visible: false, x: 0, y: 0, type: null, index: null })}
+      />
     </div>
   )
 }

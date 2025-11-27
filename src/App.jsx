@@ -140,6 +140,67 @@ function App() {
     return newTask.id
   }, [activeSheetId])
 
+  const handleInsertRow = useCallback((position, insertIndex) => {
+    const newTask = {
+      id: `task-${Date.now()}`,
+      name: '',
+      startDate: format(startOfToday(), 'yyyy-MM-dd'),
+      endDate: format(addDays(startOfToday(), 7), 'yyyy-MM-dd'),
+      status: 'planned',
+      progress: 0,
+      owner: ''
+    }
+    
+    setSheets(prev => prev.map(sheet => {
+      if (sheet.id === activeSheetId) {
+        const newTasks = [...sheet.tasks]
+        const insertPos = position === 'above' ? insertIndex : insertIndex + 1
+        newTasks.splice(insertPos, 0, newTask)
+        return { ...sheet, tasks: newTasks }
+      }
+      return sheet
+    }))
+    return newTask.id
+  }, [activeSheetId])
+
+  const handleInsertColumn = useCallback((position, insertIndex) => {
+    const columnName = prompt('Enter column name:')
+    if (!columnName || !columnName.trim()) return
+    
+    const newColumn = {
+      id: `col-${Date.now()}`,
+      name: columnName.trim(),
+      visible: true
+    }
+    
+    setSheets(prev => prev.map(sheet => {
+      if (sheet.id === activeSheetId) {
+        const customCols = [...(sheet.customColumns || [])]
+        // insertIndex is the column position in the visible columns list
+        // Standard columns: task, startDate, duration, endDate, owner (5 max)
+        // Custom columns appear after all standard columns (before timeline)
+        
+        // Count how many standard columns exist before the insert position
+        let standardColCount = 0
+        const standardOrder = ['task', 'startDate', 'duration', 'endDate', 'owner']
+        standardOrder.forEach(col => {
+          if (visibleColumns[col]) standardColCount++
+        })
+        
+        // Calculate position in customColumns array
+        // If inserting at or after all standard columns, insert in custom columns array
+        let customColInsertIndex = Math.max(0, insertIndex - standardColCount)
+        if (position === 'right') {
+          customColInsertIndex++
+        }
+        
+        customCols.splice(customColInsertIndex, 0, newColumn)
+        return { ...sheet, customColumns: customCols }
+      }
+      return sheet
+    }))
+  }, [activeSheetId, visibleColumns])
+
   const handleAddColumn = useCallback(() => {
     const columnName = prompt('Enter column name:')
     if (!columnName || !columnName.trim()) return
@@ -190,6 +251,8 @@ function App() {
           onAddRow={handleAddTask}
           onAddColumn={handleAddColumn}
           onDeleteColumn={handleDeleteColumn}
+          onInsertRow={handleInsertRow}
+          onInsertColumn={handleInsertColumn}
         />
       </div>
 
