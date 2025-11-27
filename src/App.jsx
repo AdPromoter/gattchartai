@@ -7,7 +7,7 @@ import Login from './components/Login'
 import LandingPage from './components/LandingPage'
 import { parseAITask } from './services/aiService'
 import { saveToLocalStorage, loadFromLocalStorage, exportToJSON, importFromJSON } from './services/saveService'
-import { getUserSession, signOut } from './services/authService'
+import { getUserSession, signOut, saveUserSession } from './services/authService'
 import './App.css'
 
 function App() {
@@ -22,9 +22,20 @@ function App() {
     if (session) {
       setUser(session)
       setShowLanding(false) // Hide landing if user session exists
+    } else if (!googleClientId) {
+      // Auto-create guest user if no Google Client ID is configured
+      const guestUser = {
+        id: 'guest-' + Date.now(),
+        email: 'guest@local',
+        name: 'Guest User',
+        picture: ''
+      }
+      saveUserSession(guestUser)
+      setUser(guestUser)
+      setShowLanding(false)
     }
     setIsInitialized(true)
-  }, [])
+  }, [googleClientId])
 
   // Load from localStorage on mount (after user is set)
   const [sheets, setSheets] = useState(() => {
@@ -75,7 +86,8 @@ function App() {
       return
     }
     
-    if (!user) return // Don't save if not logged in
+    // Save to localStorage (works for both logged in and guest users)
+    const userId = user?.id || 'guest'
     
     // Debounce saves to avoid excessive localStorage writes
     const timeoutId = setTimeout(() => {
@@ -83,7 +95,7 @@ function App() {
         sheets,
         activeSheetId,
         visibleColumns
-      }, user.id)
+      }, userId)
     }, 500)
     
     return () => clearTimeout(timeoutId)
@@ -398,8 +410,22 @@ function App() {
     return <LandingPage onGetStarted={() => setShowLanding(false)} />
   }
 
+  // Auto-create guest user if no Google Client ID and user clicked "Sign In"
+  useEffect(() => {
+    if (!user && !showLanding && !googleClientId && isInitialized) {
+      const guestUser = {
+        id: 'guest-' + Date.now(),
+        email: 'guest@local',
+        name: 'Guest User',
+        picture: ''
+      }
+      saveUserSession(guestUser)
+      setUser(guestUser)
+    }
+  }, [user, showLanding, googleClientId, isInitialized])
+
   // Show login screen if not authenticated (after landing page)
-  if (!user && !showLanding) {
+  if (!user && !showLanding && googleClientId) {
     return <Login onLogin={handleLogin} clientId={googleClientId} />
   }
 

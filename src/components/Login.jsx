@@ -9,6 +9,17 @@ import {
 } from '../services/authService'
 import './Login.css'
 
+const handleGuestLogin = (onLogin) => {
+  const guestUser = {
+    sub: 'guest-' + Date.now(),
+    email: 'guest@local',
+    name: 'Guest User',
+    picture: ''
+  }
+  saveUserSession(guestUser)
+  onLogin(guestUser)
+}
+
 function Login({ onLogin, clientId }) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -16,7 +27,6 @@ function Login({ onLogin, clientId }) {
 
   useEffect(() => {
     if (!clientId) {
-      setError('Google Client ID not configured. Please add VITE_GOOGLE_CLIENT_ID to your .env file.')
       setIsLoading(false)
       return
     }
@@ -76,10 +86,14 @@ function Login({ onLogin, clientId }) {
       <div className="login-card">
         <div className="login-header">
           <h1>AI Gantt Chart</h1>
-          <p>Sign in with Google to access your projects</p>
+          {clientId ? (
+            <p>Sign in with Google to access your projects</p>
+          ) : (
+            <p>Continue to access your projects</p>
+          )}
         </div>
 
-        {error && (
+        {error && clientId && (
           <div className="login-error">
             {error}
           </div>
@@ -92,12 +106,39 @@ function Login({ onLogin, clientId }) {
           </div>
         ) : (
           <div className="login-content">
-            <div id="google-signin-button" ref={buttonRef}></div>
-            <p className="login-note">
-              By signing in, you'll be able to save and access your projects across devices.
-              <br />
-              New users will automatically create an account.
-            </p>
+            {clientId && (
+              <div id="google-signin-button" ref={buttonRef}></div>
+            )}
+            {!clientId && (
+              <div className="login-no-google">
+                <p className="login-note">
+                  Google Sign-In is not configured. You can continue with local storage.
+                </p>
+                <button 
+                  className="cta-primary" 
+                  onClick={() => {
+                    // Create a local guest user
+                    const guestUser = {
+                      sub: 'guest-' + Date.now(),
+                      email: 'guest@local',
+                      name: 'Guest User',
+                      picture: ''
+                    }
+                    saveUserSession(guestUser)
+                    onLogin(guestUser)
+                  }}
+                >
+                  Continue as Guest
+                </button>
+              </div>
+            )}
+            {clientId && (
+              <p className="login-note">
+                By signing in, you'll be able to save and access your projects across devices.
+                <br />
+                New users will automatically create an account.
+              </p>
+            )}
           </div>
         )}
       </div>

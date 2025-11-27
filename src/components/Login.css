@@ -85,3 +85,30 @@
   max-width: 320px;
 }
 
+.login-no-google {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.login-no-google .cta-primary {
+  padding: 14px 32px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  font-family: inherit;
+  background: #1a1a1a;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(26, 26, 26, 0.15);
+}
+
+.login-no-google .cta-primary:hover {
+  background: #333;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(26, 26, 26, 0.2);
+}
+
