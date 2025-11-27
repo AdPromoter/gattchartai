@@ -2,7 +2,9 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { format, parseISO, differenceInDays, addDays, startOfToday, isSameDay } from 'date-fns'
 import './GanttChart.css'
 
-function GanttChart({ tasks, visibleColumns, onToggleColumn, onUpdateTask, onAddRow }) {
+function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn, onUpdateTask, onAddRow, onAddColumn, onDeleteColumn }) {
+  const tableWrapperRef = useRef(null)
+  const lastTaskIdRef = useRef(null)
   const today = startOfToday()
   const [editingCell, setEditingCell] = useState(null)
   const [editValue, setEditValue] = useState('')
@@ -99,9 +101,11 @@ function GanttChart({ tasks, visibleColumns, onToggleColumn, onUpdateTask, onAdd
         newTask.endDate = value || format(addDays(today, 7), 'yyyy-MM-dd')
       } else if (field === 'owner') {
         newTask.owner = value
+      } else if (field.startsWith('custom_')) {
+        newTask[field] = value
       }
       
-      if (value.trim()) {
+      if (value.trim() || field === 'name') {
         onUpdateTask('new', newTask)
       }
       return
@@ -120,6 +124,8 @@ function GanttChart({ tasks, visibleColumns, onToggleColumn, onUpdateTask, onAdd
       updates.endDate = value
     } else if (field === 'owner') {
       updates.owner = value
+    } else if (field.startsWith('custom_')) {
+      updates[field] = value
     }
 
     onUpdateTask(taskId, updates)
@@ -131,6 +137,30 @@ function GanttChart({ tasks, visibleColumns, onToggleColumn, onUpdateTask, onAdd
       editInputRef.current.select()
     }
   }, [editingCell])
+
+  // Scroll to newly added row and auto-edit
+  useEffect(() => {
+    if (lastTaskIdRef.current && tasks.length > 0) {
+      const lastTask = tasks[tasks.length - 1]
+      if (lastTask.id === lastTaskIdRef.current) {
+        setTimeout(() => {
+          const rowElement = document.querySelector(`[data-task-id="${lastTask.id}"]`)
+          if (rowElement && tableWrapperRef.current) {
+            rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            // Auto-focus the name cell
+            setTimeout(() => {
+              const nameCell = rowElement.querySelector('.cell-content')
+              if (nameCell) {
+                nameCell.click()
+                nameCell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
+              }
+            }, 300)
+          }
+          lastTaskIdRef.current = null
+        }, 100)
+      }
+    }
+  }, [tasks])
 
   const todayPosition = () => {
     const todayOffset = differenceInDays(today, dateRange.start)
@@ -283,6 +313,34 @@ function GanttChart({ tasks, visibleColumns, onToggleColumn, onUpdateTask, onAdd
             </div>
           </td>
         )}
+        {customColumns.filter(col => col.visible).map(col => {
+          const colField = `custom_${col.id}`
+          const isEditing = editingCell?.taskId === rowId && editingCell?.field === colField
+          const value = ''
+          return (
+            <td key={col.id} className="cell-custom">
+              {isEditing ? (
+                <input
+                  ref={editInputRef}
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={() => handleCellBlur(rowId, colField)}
+                  onKeyDown={(e) => handleCellKeyPress(e, rowId, colField)}
+                  className="cell-input"
+                  placeholder={`Enter ${col.name.toLowerCase()}...`}
+                />
+              ) : (
+                <div 
+                  className="cell-content"
+                  onDoubleClick={() => handleCellClick(rowId, colField, value)}
+                >
+                  <span className="empty-cell"></span>
+                </div>
+              )}
+            </td>
+          )
+        })}
       </tr>
     )
   }
@@ -292,8 +350,8 @@ function GanttChart({ tasks, visibleColumns, onToggleColumn, onUpdateTask, onAdd
     const position = visibleColumns.timeline ? getTaskPosition(task) : null
     const isEditing = editingCell?.taskId === task.id
     
-    return (
-      <tr key={task.id} className={task.status === 'completed' ? 'completed' : ''}>
+      return (
+        <tr key={task.id} data-task-id={task.id} className={task.status === 'completed' ? 'completed' : ''}>
         {visibleColumns.task && (
           <td className="cell-task">
             {isEditing && editingCell?.field === 'name' ? (
@@ -423,6 +481,33 @@ function GanttChart({ tasks, visibleColumns, onToggleColumn, onUpdateTask, onAdd
             </div>
           </td>
         )}
+        {customColumns.filter(col => col.visible).map(col => {
+          const colField = `custom_${col.id}`
+          const isEditing = editingCell?.taskId === task.id && editingCell?.field === colField
+          const value = task[colField] || ''
+          return (
+            <td key={col.id} className="cell-custom">
+              {isEditing ? (
+                <input
+                  ref={editInputRef}
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={() => handleCellBlur(task.id, colField)}
+                  onKeyDown={(e) => handleCellKeyPress(e, task.id, colField)}
+                  className="cell-input"
+                />
+              ) : (
+                <div 
+                  className="cell-content"
+                  onDoubleClick={() => handleCellClick(task.id, colField, value)}
+                >
+                  {value || <span className="empty-cell">Click to edit</span>}
+                </div>
+              )}
+            </td>
+          )
+        })}
       </tr>
     )
   }
@@ -433,14 +518,33 @@ function GanttChart({ tasks, visibleColumns, onToggleColumn, onUpdateTask, onAdd
   return (
     <div className="gantt-chart-excel">
       <div className="gantt-toolbar">
-        <button className="toolbar-btn add-row-btn" onClick={onAddRow} title="Add Row">
+        <button 
+          className="toolbar-btn add-row-btn" 
+          onClick={() => {
+            const taskId = onAddRow?.()
+            if (taskId) {
+              lastTaskIdRef.current = taskId
+            }
+          }} 
+          title="Add Row"
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
           </svg>
           Add Row
         </button>
+        <button 
+          className="toolbar-btn add-column-btn" 
+          onClick={onAddColumn} 
+          title="Add Column"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Add Column
+        </button>
       </div>
-      <div className="gantt-table-wrapper">
+      <div className="gantt-table-wrapper" ref={tableWrapperRef}>
         <table className="gantt-table">
           <thead>
           <tr>
@@ -479,6 +583,12 @@ function GanttChart({ tasks, visibleColumns, onToggleColumn, onUpdateTask, onAdd
                 Timeline
               </th>
             )}
+            {customColumns.filter(col => col.visible).map(col => (
+              <th key={col.id} className="col-custom">
+                {col.name}
+                <button className="col-toggle" onClick={() => onDeleteColumn(col.id)} title="Delete column">×</button>
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>

@@ -132,6 +132,10 @@
   min-width: 400px;
 }
 
+.col-custom {
+  min-width: 120px;
+}
+
 .gantt-table tbody tr {
   border-bottom: 1px solid #eee;
   transition: background 0.2s;
@@ -208,6 +212,10 @@
 }
 
 .cell-owner {
+  color: #666;
+}
+
+.cell-custom {
   color: #666;
 }
 

@@ -11,7 +11,8 @@ function App() {
     {
       id: 'sheet-1',
       name: 'Main Project',
-      tasks: []
+      tasks: [],
+      customColumns: []
     }
   ])
   const [activeSheetId, setActiveSheetId] = useState('sheet-1')
@@ -73,7 +74,8 @@ function App() {
     const newSheet = {
       id: `sheet-${Date.now()}`,
       name: `Sheet ${sheets.length + 1}`,
-      tasks: []
+      tasks: [],
+      customColumns: []
     }
     setSheets(prev => [...prev, newSheet])
     setActiveSheetId(newSheet.id)
@@ -134,6 +136,39 @@ function App() {
         ? { ...sheet, tasks: [...sheet.tasks, newTask] }
         : sheet
     ))
+    // Return task ID so component can scroll to it
+    return newTask.id
+  }, [activeSheetId])
+
+  const handleAddColumn = useCallback(() => {
+    const columnName = prompt('Enter column name:')
+    if (!columnName || !columnName.trim()) return
+    
+    const newColumn = {
+      id: `col-${Date.now()}`,
+      name: columnName.trim(),
+      visible: true
+    }
+    
+    setSheets(prev => prev.map(sheet =>
+      sheet.id === activeSheetId
+        ? { 
+            ...sheet, 
+            customColumns: [...(sheet.customColumns || []), newColumn]
+          }
+        : sheet
+    ))
+  }, [activeSheetId])
+
+  const handleDeleteColumn = useCallback((columnId) => {
+    setSheets(prev => prev.map(sheet =>
+      sheet.id === activeSheetId
+        ? { 
+            ...sheet, 
+            customColumns: (sheet.customColumns || []).filter(col => col.id !== columnId)
+          }
+        : sheet
+    ))
   }, [activeSheetId])
 
   return (
@@ -146,12 +181,15 @@ function App() {
         <GanttChart 
           tasks={tasks} 
           visibleColumns={visibleColumns}
+          customColumns={activeSheet.customColumns || []}
           onToggleColumn={(column) => setVisibleColumns(prev => ({
             ...prev,
             [column]: !prev[column]
           }))}
           onUpdateTask={handleUpdateTask}
           onAddRow={handleAddTask}
+          onAddColumn={handleAddColumn}
+          onDeleteColumn={handleDeleteColumn}
         />
       </div>
 
