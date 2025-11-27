@@ -378,8 +378,6 @@ function App() {
     }
   }, [])
 
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
-
   // Show login screen if not authenticated
   if (!user) {
     return <Login onLogin={handleLogin} clientId={googleClientId} />
