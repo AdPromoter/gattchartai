@@ -13,6 +13,7 @@ import './App.css'
 function App() {
   const [user, setUser] = useState(null)
   const [showLanding, setShowLanding] = useState(true)
+  const [isInitialized, setIsInitialized] = useState(false)
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
   // Check for existing user session on mount
@@ -22,6 +23,7 @@ function App() {
       setUser(session)
       setShowLanding(false) // Hide landing if user session exists
     }
+    setIsInitialized(true)
   }, [])
 
   // Load from localStorage on mount (after user is set)
@@ -50,6 +52,21 @@ function App() {
   
   // Track if we've loaded initial data to avoid saving during initial load
   const isInitialMount = useRef(true)
+  
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    const session = getUserSession()
+    const saved = loadFromLocalStorage(session?.id)
+    return saved?.visibleColumns || {
+      task: true,
+      today: true,
+      startDate: true,
+      duration: true,
+      endDate: true,
+      owner: true,
+      timeline: true
+    }
+  })
   
   // Auto-save to localStorage whenever data changes
   useEffect(() => {
@@ -90,16 +107,6 @@ function App() {
       isInitialMount.current = true
     }
   }, [user])
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [visibleColumns, setVisibleColumns] = useState({
-    task: true,
-    today: true,
-    startDate: true,
-    duration: true,
-    endDate: true,
-    owner: true,
-    timeline: true
-  })
 
   const activeSheet = sheets.find(s => s.id === activeSheetId) || sheets[0]
   const tasks = activeSheet?.tasks || []
@@ -380,6 +387,11 @@ function App() {
       setActiveSheetId('sheet-1')
     }
   }, [])
+
+  // Don't render until initialized
+  if (!isInitialized) {
+    return null
+  }
 
   // Show landing page first if not logged in
   if (!user && showLanding) {

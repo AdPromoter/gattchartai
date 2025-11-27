@@ -3,14 +3,19 @@ import './LandingPage.css'
 
 function LandingPage({ onGetStarted }) {
   const [isVisible, setIsVisible] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    // Small delay to ensure proper initialization
+    setMounted(true)
     const timer = setTimeout(() => {
       setIsVisible(true)
-    }, 50)
+    }, 100)
     return () => clearTimeout(timer)
   }, [])
+
+  if (!mounted) {
+    return null
+  }
 
   return (
     <div className="landing-page">
