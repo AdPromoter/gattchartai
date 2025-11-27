@@ -189,16 +189,13 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
             const rect = colHeader.getBoundingClientRect()
             showColumnContextMenu(rect.left, rect.top + rect.height, colIndex)
           }
-        } else {
-          // Default: add row at end
-          onAddRow?.()
         }
       }
     }
     
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onAddRow])
+  }, [])
 
   const showRowContextMenu = (x, y, rowIndex) => {
     setContextMenu({
@@ -299,7 +296,8 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
         data-row-index={globalIndex}
         onContextMenu={(e) => {
           e.preventDefault()
-          showRowContextMenu(e.clientX, e.clientY, globalIndex)
+          // For empty rows, use tasks.length as the insert position (insert at end)
+          showRowContextMenu(e.clientX, e.clientY, tasks.length)
         }}
       >
         <td 
@@ -307,7 +305,8 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
           onContextMenu={(e) => {
             e.preventDefault()
             e.stopPropagation()
-            showRowContextMenu(e.clientX, e.clientY, globalIndex)
+            // For empty rows, use tasks.length as the insert position (insert at end)
+            showRowContextMenu(e.clientX, e.clientY, tasks.length)
           }}
         >
           {globalIndex + 1}
@@ -655,33 +654,6 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
 
   return (
     <div className="gantt-chart-excel">
-      <div className="gantt-toolbar">
-        <button 
-          className="toolbar-btn add-row-btn" 
-          onClick={() => {
-            const taskId = onAddRow?.()
-            if (taskId) {
-              lastTaskIdRef.current = taskId
-            }
-          }} 
-          title="Add Row"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-          Add Row
-        </button>
-        <button 
-          className="toolbar-btn add-column-btn" 
-          onClick={onAddColumn} 
-          title="Add Column"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-          Add Column
-        </button>
-      </div>
       <div className="gantt-table-wrapper" ref={tableWrapperRef}>
         <table className="gantt-table">
           <thead>

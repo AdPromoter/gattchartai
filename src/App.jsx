@@ -1,21 +1,92 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { format, startOfToday, addDays } from 'date-fns'
 import GanttChart from './components/GanttChart'
 import AIAssistant from './components/AIAssistant'
 import SheetTabs from './components/SheetTabs'
+import Login from './components/Login'
 import { parseAITask } from './services/aiService'
+import { saveToLocalStorage, loadFromLocalStorage, exportToJSON, importFromJSON } from './services/saveService'
+import { getUserSession, signOut } from './services/authService'
 import './App.css'
 
 function App() {
-  const [sheets, setSheets] = useState([
-    {
+  const [user, setUser] = useState(null)
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+
+  // Check for existing user session on mount
+  useEffect(() => {
+    const session = getUserSession()
+    if (session) {
+      setUser(session)
+    }
+  }, [])
+
+  // Load from localStorage on mount (after user is set)
+  const [sheets, setSheets] = useState(() => {
+    const session = getUserSession()
+    const saved = loadFromLocalStorage(session?.id)
+    if (saved && saved.sheets && saved.sheets.length > 0) {
+      return saved.sheets
+    }
+    return [{
       id: 'sheet-1',
       name: 'Main Project',
       tasks: [],
       customColumns: []
+    }]
+  })
+  
+  const [activeSheetId, setActiveSheetId] = useState(() => {
+    const session = getUserSession()
+    const saved = loadFromLocalStorage(session?.id)
+    if (saved && saved.activeSheetId) {
+      return saved.activeSheetId
     }
-  ])
-  const [activeSheetId, setActiveSheetId] = useState('sheet-1')
+    return 'sheet-1'
+  })
+  
+  // Track if we've loaded initial data to avoid saving during initial load
+  const isInitialMount = useRef(true)
+  
+  // Auto-save to localStorage whenever data changes
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    
+    if (!user) return // Don't save if not logged in
+    
+    // Debounce saves to avoid excessive localStorage writes
+    const timeoutId = setTimeout(() => {
+      saveToLocalStorage({
+        sheets,
+        activeSheetId,
+        visibleColumns
+      }, user.id)
+    }, 500)
+    
+    return () => clearTimeout(timeoutId)
+  }, [sheets, activeSheetId, visibleColumns, user])
+  
+  // Reload data when user logs in
+  useEffect(() => {
+    if (user) {
+      const saved = loadFromLocalStorage(user.id)
+      if (saved) {
+        if (saved.sheets && saved.sheets.length > 0) {
+          setSheets(saved.sheets)
+        }
+        if (saved.activeSheetId) {
+          setActiveSheetId(saved.activeSheetId)
+        }
+        if (saved.visibleColumns) {
+          setVisibleColumns(saved.visibleColumns)
+        }
+      }
+      isInitialMount.current = true
+    }
+  }, [user])
   const [isProcessing, setIsProcessing] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState({
     task: true,
@@ -141,11 +212,12 @@ function App() {
   }, [activeSheetId])
 
   const handleInsertRow = useCallback((position, insertIndex) => {
+    // Create completely empty task
     const newTask = {
       id: `task-${Date.now()}`,
       name: '',
-      startDate: format(startOfToday(), 'yyyy-MM-dd'),
-      endDate: format(addDays(startOfToday(), 7), 'yyyy-MM-dd'),
+      startDate: '',
+      endDate: '',
       status: 'planned',
       progress: 0,
       owner: ''
@@ -154,7 +226,10 @@ function App() {
     setSheets(prev => prev.map(sheet => {
       if (sheet.id === activeSheetId) {
         const newTasks = [...sheet.tasks]
-        const insertPos = position === 'above' ? insertIndex : insertIndex + 1
+        // Clamp insertIndex to valid range (0 to tasks.length)
+        const maxIndex = newTasks.length
+        const clampedIndex = Math.min(Math.max(0, insertIndex), maxIndex)
+        const insertPos = position === 'above' ? clampedIndex : Math.min(clampedIndex + 1, maxIndex)
         newTasks.splice(insertPos, 0, newTask)
         return { ...sheet, tasks: newTasks }
       }
@@ -232,10 +307,127 @@ function App() {
     ))
   }, [activeSheetId])
 
+  const handleExport = useCallback(() => {
+    const success = exportToJSON({
+      sheets,
+      visibleColumns
+    }, `gantt-chart-${new Date().toISOString().split('T')[0]}.json`)
+    
+    if (success) {
+      alert('Project exported successfully!')
+    } else {
+      alert('Error exporting project. Please try again.')
+    }
+  }, [sheets, visibleColumns])
+
+  const handleImport = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = async (e) => {
+      const file = e.target.files[0]
+      if (!file) return
+      
+      try {
+        const imported = await importFromJSON(file)
+        
+        if (window.confirm('Import will replace your current project. Continue?')) {
+          setSheets(imported.sheets)
+          if (imported.activeSheetId) {
+            setActiveSheetId(imported.activeSheetId)
+          }
+          if (imported.visibleColumns) {
+            setVisibleColumns(imported.visibleColumns)
+          }
+          // Save immediately after import
+          saveToLocalStorage({
+            sheets: imported.sheets,
+            activeSheetId: imported.activeSheetId || imported.sheets[0]?.id,
+            visibleColumns: imported.visibleColumns || visibleColumns
+          })
+          alert('Project imported successfully!')
+        }
+      } catch (error) {
+        alert(`Error importing file: ${error.message}`)
+      }
+    }
+    input.click()
+  }, [visibleColumns])
+
+  const handleLogin = useCallback((userData) => {
+    setUser({
+      id: userData.sub,
+      email: userData.email,
+      name: userData.name,
+      picture: userData.picture
+    })
+  }, [])
+
+  const handleLogout = useCallback(() => {
+    if (window.confirm('Are you sure you want to sign out?')) {
+      signOut()
+      setUser(null)
+      // Reset to default state
+      setSheets([{
+        id: 'sheet-1',
+        name: 'Main Project',
+        tasks: [],
+        customColumns: []
+      }])
+      setActiveSheetId('sheet-1')
+    }
+  }, [])
+
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+
+  // Show login screen if not authenticated
+  if (!user) {
+    return <Login onLogin={handleLogin} clientId={googleClientId} />
+  }
+
   return (
     <div className="app">
       <header className="app-header">
-        <h1>AI Gantt Chart</h1>
+        <div className="header-content">
+          <div className="header-left">
+            <h1>AI Gantt Chart</h1>
+            <div className="user-info">
+              {user.picture && (
+                <img src={user.picture} alt={user.name} className="user-avatar" />
+              )}
+              <span className="user-name">{user.name}</span>
+            </div>
+          </div>
+          <div className="header-actions">
+            <button 
+              className="header-btn" 
+              onClick={handleExport}
+              title="Export project to JSON file"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Export
+            </button>
+            <button 
+              className="header-btn" 
+              onClick={handleImport}
+              title="Import project from JSON file"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Import
+            </button>
+          </div>
+        </div>
+        <div className="save-indicator">
+          <span className="save-text">Auto-saved to browser • {user?.email || ''}</span>
+        </div>
       </header>
       
       <div className="app-content">
