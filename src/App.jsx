@@ -4,6 +4,7 @@ import GanttChart from './components/GanttChart'
 import AIAssistant from './components/AIAssistant'
 import SheetTabs from './components/SheetTabs'
 import Login from './components/Login'
+import LandingPage from './components/LandingPage'
 import { parseAITask } from './services/aiService'
 import { saveToLocalStorage, loadFromLocalStorage, exportToJSON, importFromJSON } from './services/saveService'
 import { getUserSession, signOut } from './services/authService'
@@ -11,6 +12,7 @@ import './App.css'
 
 function App() {
   const [user, setUser] = useState(null)
+  const [showLanding, setShowLanding] = useState(true)
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
   // Check for existing user session on mount
@@ -18,6 +20,7 @@ function App() {
     const session = getUserSession()
     if (session) {
       setUser(session)
+      setShowLanding(false) // Hide landing if user session exists
     }
   }, [])
 
@@ -378,8 +381,13 @@ function App() {
     }
   }, [])
 
-  // Show login screen if not authenticated
-  if (!user) {
+  // Show landing page first if not logged in
+  if (!user && showLanding) {
+    return <LandingPage onGetStarted={() => setShowLanding(false)} />
+  }
+
+  // Show login screen if not authenticated (after landing page)
+  if (!user && !showLanding) {
     return <Login onLogin={handleLogin} clientId={googleClientId} />
   }
 
