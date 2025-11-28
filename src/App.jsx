@@ -126,18 +126,30 @@ function App() {
   const handleAIInput = useCallback(async (input, inputType = 'text') => {
     setIsProcessing(true)
     try {
-      const parsedTask = await parseAITask(input, tasks)
+      // Pass full context to AI service
+      const context = {
+        sheets,
+        activeSheetId,
+        activeSheetTasks: tasks,
+        customColumns: activeSheet.customColumns || []
+      }
+      
+      const parsedTask = await parseAITask(input, context)
       
       if (parsedTask) {
         if (parsedTask.action === 'add') {
+          // Add task to the specified sheet or current sheet
+          const targetSheetId = parsedTask.sheetId || activeSheetId
           setSheets(prev => prev.map(sheet =>
-            sheet.id === activeSheetId
+            sheet.id === targetSheetId
               ? { ...sheet, tasks: [...sheet.tasks, parsedTask.task] }
               : sheet
           ))
         } else if (parsedTask.action === 'update') {
+          // Update task in the specified sheet or current sheet
+          const targetSheetId = parsedTask.sheetId || activeSheetId
           setSheets(prev => prev.map(sheet =>
-            sheet.id === activeSheetId
+            sheet.id === targetSheetId
               ? { ...sheet, tasks: sheet.tasks.map(t => 
                   t.id === parsedTask.taskId 
                     ? { ...t, ...parsedTask.updates }
@@ -146,14 +158,59 @@ function App() {
               : sheet
           ))
         } else if (parsedTask.action === 'delete') {
+          // Delete task from the specified sheet or current sheet
+          const targetSheetId = parsedTask.sheetId || activeSheetId
           setSheets(prev => prev.map(sheet =>
-            sheet.id === activeSheetId
+            sheet.id === targetSheetId
               ? { ...sheet, tasks: sheet.tasks.filter(t => t.id !== parsedTask.taskId) }
               : sheet
           ))
         } else if (parsedTask.action === 'create-sheet') {
           setSheets(prev => [...prev, parsedTask.sheet])
           setActiveSheetId(parsedTask.sheet.id)
+        } else if (parsedTask.action === 'rename-sheet') {
+          setSheets(prev => prev.map(sheet =>
+            sheet.id === parsedTask.sheetId
+              ? { ...sheet, name: parsedTask.sheetName }
+              : sheet
+          ))
+        } else if (parsedTask.action === 'switch-sheet') {
+          setActiveSheetId(parsedTask.sheetId)
+        } else if (parsedTask.action === 'delete-sheet') {
+          if (sheets.length === 1) {
+            alert('Cannot delete the last sheet. Create a new one first.')
+            return
+          }
+          setSheets(prev => {
+            const filtered = prev.filter(s => s.id !== parsedTask.sheetId)
+            if (activeSheetId === parsedTask.sheetId && filtered.length > 0) {
+              setActiveSheetId(filtered[0].id)
+            }
+            return filtered
+          })
+        } else if (parsedTask.action === 'add-column') {
+          const newColumn = {
+            id: `col-${Date.now()}`,
+            name: parsedTask.columnName,
+            visible: true
+          }
+          setSheets(prev => prev.map(sheet =>
+            sheet.id === activeSheetId
+              ? { 
+                  ...sheet, 
+                  customColumns: [...(sheet.customColumns || []), newColumn]
+                }
+              : sheet
+          ))
+        } else if (parsedTask.action === 'delete-column') {
+          setSheets(prev => prev.map(sheet =>
+            sheet.id === activeSheetId
+              ? { 
+                  ...sheet, 
+                  customColumns: (sheet.customColumns || []).filter(col => col.id !== parsedTask.columnId)
+                }
+              : sheet
+          ))
         }
       }
     } catch (error) {
@@ -161,7 +218,7 @@ function App() {
     } finally {
       setIsProcessing(false)
     }
-  }, [tasks, activeSheetId])
+  }, [tasks, activeSheetId, sheets, activeSheet])
 
   const handleAddSheet = useCallback(() => {
     const newSheet = {

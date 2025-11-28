@@ -187,6 +187,24 @@ function AIAssistant({ onInput, isProcessing, activeSheetName = 'Main Project' }
               >
                 "Create new sheet called Marketing"
               </button>
+              <button 
+                className="example-btn"
+                onClick={() => handleExampleClick('Switch to Marketing sheet')}
+              >
+                "Switch to Marketing sheet"
+              </button>
+              <button 
+                className="example-btn"
+                onClick={() => handleExampleClick('Rename Marketing sheet to Sales Campaign')}
+              >
+                "Rename Marketing sheet to Sales Campaign"
+              </button>
+              <button 
+                className="example-btn"
+                onClick={() => handleExampleClick('Add column called Priority')}
+              >
+                "Add column called Priority"
+              </button>
             </div>
           </div>
         </div>
