@@ -19,6 +19,10 @@ const USE_AI = !!OPENAI_API_KEY
  * @param {Array} context.customColumns - Custom columns in the active sheet
  */
 export async function parseAITask(input, context = {}) {
+  // Ensure context is an object
+  if (!context || typeof context !== 'object') {
+    context = {}
+  }
   const { sheets = [], activeSheetId = null, activeSheetTasks = [], customColumns = [] } = context
   
   // Use real AI if API key is configured
