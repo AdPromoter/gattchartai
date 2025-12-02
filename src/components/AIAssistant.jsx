@@ -8,6 +8,8 @@ function AIAssistant({ onInput, isProcessing, activeSheetName = 'Main Project' }
   const [messages, setMessages] = useState([])
   const recognitionRef = useRef(null)
   const inputRef = useRef(null)
+  const handleSubmitRef = useRef(null)
+  const addMessageRef = useRef(null)
 
   const addMessage = useCallback((text, type = 'user') => {
     const timestamp = Date.now()
@@ -33,6 +35,12 @@ function AIAssistant({ onInput, isProcessing, activeSheetName = 'Main Project' }
     addMessage('Processing your request...', 'system')
   }, [input, onInput, addMessage])
 
+  // Keep refs updated with latest callbacks
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit
+    addMessageRef.current = addMessage
+  }, [handleSubmit, addMessage])
+
   useEffect(() => {
     // Initialize Web Speech API
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -43,28 +51,54 @@ function AIAssistant({ onInput, isProcessing, activeSheetName = 'Main Project' }
       recognitionRef.current.lang = 'en-US'
 
       recognitionRef.current.onresult = (event) => {
-        const transcript = event.results[0][0].transcript
-        setInput(transcript)
-        handleSubmit(transcript, 'voice')
+        if (event.results && event.results.length > 0 && event.results[0].length > 0) {
+          const transcript = event.results[0][0].transcript
+          setInput(transcript)
+          if (handleSubmitRef.current) {
+            handleSubmitRef.current(transcript, 'voice')
+          }
+        }
       }
 
       recognitionRef.current.onerror = (event) => {
         console.error('Speech recognition error:', event.error)
         setIsListening(false)
-        addMessage('Error with voice recognition. Please try typing instead.', 'error')
+        
+        let errorMessage = 'Error with voice recognition. Please try typing instead.'
+        if (event.error === 'not-allowed') {
+          errorMessage = 'Microphone permission denied. Please allow microphone access and try again.'
+        } else if (event.error === 'no-speech') {
+          errorMessage = 'No speech detected. Please try again.'
+        } else if (event.error === 'audio-capture') {
+          errorMessage = 'No microphone found. Please check your microphone connection.'
+        } else if (event.error === 'network') {
+          errorMessage = 'Network error. Please check your connection and try again.'
+        }
+        
+        if (addMessageRef.current) {
+          addMessageRef.current(errorMessage, 'error')
+        }
       }
 
       recognitionRef.current.onend = () => {
         setIsListening(false)
       }
+
+      recognitionRef.current.onstart = () => {
+        setIsListening(true)
+      }
     }
 
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop()
+        try {
+          recognitionRef.current.stop()
+        } catch (e) {
+          // Ignore errors when stopping during cleanup
+        }
       }
     }
-  }, [handleSubmit, addMessage])
+  }, []) // Empty dependency array - only initialize once
 
   const startListening = () => {
     if (!recognitionRef.current) {
@@ -72,21 +106,51 @@ function AIAssistant({ onInput, isProcessing, activeSheetName = 'Main Project' }
       return
     }
 
+    // Check if already listening
+    if (isListening) {
+      return
+    }
+
     try {
-      setIsListening(true)
-      recognitionRef.current.start()
-      addMessage('Listening...', 'system')
+      // Stop any existing recognition first
+      if (recognitionRef.current && recognitionRef.current.state !== 'inactive') {
+        recognitionRef.current.stop()
+      }
+      
+      // Small delay to ensure previous recognition is fully stopped
+      setTimeout(() => {
+        try {
+          recognitionRef.current.start()
+          addMessage('Listening...', 'system')
+        } catch (error) {
+          console.error('Error starting recognition:', error)
+          setIsListening(false)
+          if (error.message && error.message.includes('already started')) {
+            addMessage('Voice recognition is already active.', 'error')
+          } else {
+            addMessage('Could not start voice recognition. Please try again.', 'error')
+          }
+        }
+      }, 100)
     } catch (error) {
       console.error('Error starting recognition:', error)
       setIsListening(false)
-      addMessage('Could not start voice recognition.', 'error')
+      addMessage('Could not start voice recognition. Please try again.', 'error')
     }
   }
 
   const stopListening = () => {
-    if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop()
-      setIsListening(false)
+    if (recognitionRef.current) {
+      try {
+        if (recognitionRef.current.state !== 'inactive') {
+          recognitionRef.current.stop()
+        }
+        setIsListening(false)
+        addMessage('Stopped listening.', 'system')
+      } catch (error) {
+        console.error('Error stopping recognition:', error)
+        setIsListening(false)
+      }
     }
   }
 
@@ -113,6 +177,14 @@ function AIAssistant({ onInput, isProcessing, activeSheetName = 'Main Project' }
 
   return (
     <>
+      {/* Backdrop for mobile */}
+      {isOpen && (
+        <div 
+          className="ai-assistant-backdrop"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+      
       {/* Floating AI Button */}
       <div 
         className={`ai-assistant-toggle ${isOpen ? 'open' : ''} ${isProcessing ? 'processing' : ''}`}
