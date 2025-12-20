@@ -53,6 +53,21 @@ npm run dev
 
 The app will open at `http://localhost:3000`
 
+## 🚀 Deployment
+
+The app is deployed to Firebase Hosting:
+- **Live URL**: https://gantt-chart-ai.web.app
+- **Project ID**: gantt-chart-ai
+
+### Deploy Updates
+
+```bash
+npm run build
+npm run deploy
+```
+
+See `DEPLOYMENT.md` for detailed deployment instructions.
+
 ## 🤖 AI Setup (Optional but Recommended)
 
 To enable real AI understanding (instead of simple pattern matching):

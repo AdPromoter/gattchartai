@@ -1,83 +1,33 @@
-import { useEffect, useRef, useState } from 'react'
-import {
-  loadGoogleScript,
-  initializeGoogleSignIn,
-  renderGoogleButton,
-  promptOneTap,
-  decodeJwtResponse,
-  saveUserSession
-} from '../services/authService'
+import { useState, useEffect } from 'react'
+import { signInWithGoogle } from '../services/firebaseAuth'
 import './Login.css'
 
-const handleGuestLogin = (onLogin) => {
-  const guestUser = {
-    sub: 'guest-' + Date.now(),
-    email: 'guest@local',
-    name: 'Guest User',
-    picture: ''
-  }
-  saveUserSession(guestUser)
-  onLogin(guestUser)
-}
-
-function Login({ onLogin, clientId }) {
-  const [isLoading, setIsLoading] = useState(true)
+function Login({ onLogin }) {
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
-  const buttonRef = useRef(null)
 
-  useEffect(() => {
-    if (!clientId) {
-      setIsLoading(false)
-      return
-    }
-
-    const initGoogleSignIn = async () => {
-      try {
-        // Load Google Identity Services script
-        await loadGoogleScript()
-
-        // Initialize Google Sign-In
-        await initializeGoogleSignIn(clientId, handleCredentialResponse)
-
-        // Render sign-in button
-        if (buttonRef.current) {
-          renderGoogleButton('google-signin-button', {
-            width: 280
-          })
-        }
-
-        // Show One Tap prompt after a short delay
-        setTimeout(() => {
-          promptOneTap()
-        }, 500)
-
-        setIsLoading(false)
-      } catch (err) {
-        console.error('Error initializing Google Sign-In:', err)
-        setError('Failed to load Google Sign-In. Please refresh the page.')
-        setIsLoading(false)
-      }
-    }
-
-    initGoogleSignIn()
-  }, [clientId])
-
-  const handleCredentialResponse = (response) => {
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true)
+    setError(null)
+    
     try {
-      const user = decodeJwtResponse(response.credential)
-      
-      if (user) {
-        // Save user session
-        saveUserSession(user)
-        
-        // Notify parent component
-        onLogin(user)
-      } else {
-        setError('Failed to decode user information. Please try again.')
-      }
+      const user = await signInWithGoogle()
+      onLogin(user)
     } catch (err) {
-      console.error('Error handling credential response:', err)
-      setError('Authentication failed. Please try again.')
+      console.error('Sign in error:', err)
+      
+      // Handle specific error cases
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError('Sign-in was cancelled. Please try again.')
+      } else if (err.code === 'auth/popup-blocked') {
+        setError('Popup was blocked. Please allow popups and try again.')
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Network error. Please check your connection and try again.')
+      } else {
+        setError('Failed to sign in. Please try again.')
+      }
+      
+      setIsLoading(false)
     }
   }
 
@@ -86,65 +36,60 @@ function Login({ onLogin, clientId }) {
       <div className="login-card">
         <div className="login-header">
           <h1>AI Gantt Chart</h1>
-          {clientId ? (
-            <p>Sign in with Google to access your projects</p>
-          ) : (
-            <p>Continue to access your projects</p>
-          )}
+          <p>Sign in with Google to access your projects</p>
         </div>
 
-        {error && clientId && (
+        {error && (
           <div className="login-error">
             {error}
           </div>
         )}
 
-        {isLoading ? (
-          <div className="login-loading">
-            <div className="spinner"></div>
-            <p>Loading Google Sign-In...</p>
-          </div>
-        ) : (
-          <div className="login-content">
-            {clientId && (
-              <div id="google-signin-button" ref={buttonRef}></div>
+        <div className="login-content">
+          <button
+            className="google-signin-button"
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <div className="spinner"></div>
+                <span>Signing in...</span>
+              </>
+            ) : (
+              <>
+                <svg width="20" height="20" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  />
+                </svg>
+                <span>Sign in with Google</span>
+              </>
             )}
-            {!clientId && (
-              <div className="login-no-google">
-                <p className="login-note">
-                  Google Sign-In is not configured. You can continue with local storage.
-                </p>
-                <button 
-                  className="cta-primary" 
-                  onClick={() => {
-                    // Create a local guest user
-                    const guestUser = {
-                      sub: 'guest-' + Date.now(),
-                      email: 'guest@local',
-                      name: 'Guest User',
-                      picture: ''
-                    }
-                    saveUserSession(guestUser)
-                    onLogin(guestUser)
-                  }}
-                >
-                  Continue as Guest
-                </button>
-              </div>
-            )}
-            {clientId && (
-              <p className="login-note">
-                By signing in, you'll be able to save and access your projects across devices.
-                <br />
-                New users will automatically create an account.
-              </p>
-            )}
-          </div>
-        )}
+          </button>
+          
+          <p className="login-note">
+            By signing in, you'll be able to save and access your projects across devices.
+            <br />
+            New users will automatically create an account.
+          </p>
+        </div>
       </div>
     </div>
   )
 }
 
 export default Login
-

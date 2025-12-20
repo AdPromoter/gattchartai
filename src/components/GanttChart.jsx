@@ -48,7 +48,12 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
   const calculateDuration = (startDate, endDate) => {
     if (!startDate || !endDate) return 0
     try {
-      return differenceInDays(parseISO(endDate), parseISO(startDate)) + 1
+      const start = parseISO(startDate)
+      const end = parseISO(endDate)
+      // Ensure end date is after start date
+      if (end < start) return 0
+      // Calculate inclusive duration (both start and end days count)
+      return differenceInDays(end, start) + 1
     } catch {
       return 0
     }
@@ -468,12 +473,16 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
     const position = visibleColumns.timeline ? getTaskPosition(task) : null
     const isEditing = editingCell?.taskId === task.id
     
+      const statusClass = task.status === 'completed' ? 'status-completed' : 
+                          task.status === 'ongoing' ? 'status-ongoing' : 
+                          'status-planned'
+      
       return (
         <tr 
           key={task.id} 
           data-task-id={task.id} 
           data-row-index={idx}
-          className={task.status === 'completed' ? 'completed' : ''}
+          className={`task-row ${statusClass}`}
           onContextMenu={(e) => {
             e.preventDefault()
             showRowContextMenu(e.clientX, e.clientY, idx)
@@ -597,7 +606,7 @@ function GanttChart({ tasks, visibleColumns, customColumns = [], onToggleColumn,
               </div>
               {position && (
                 <div
-                  className={`gantt-bar ${task.status || 'planned'}`}
+                  className={`gantt-bar gantt-bar-${task.status || 'planned'}`}
                   style={{
                     left: position.left,
                     width: position.width

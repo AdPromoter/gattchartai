@@ -5,120 +5,122 @@ import AIAssistant from './components/AIAssistant'
 import SheetTabs from './components/SheetTabs'
 import Login from './components/Login'
 import LandingPage from './components/LandingPage'
+import FileMenu from './components/FileMenu'
 import { parseAITask } from './services/aiService'
-import { saveToLocalStorage, loadFromLocalStorage, exportToJSON, importFromJSON } from './services/saveService'
-import { getUserSession, signOut, saveUserSession } from './services/authService'
+import { exportToJSON, importFromJSON } from './services/saveService'
+import { signOut as firebaseSignOut, onAuthStateChange } from './services/firebaseAuth'
+import { saveToFirestore, loadFromFirestore } from './services/firestoreService'
 import './App.css'
 
 function App() {
   const [user, setUser] = useState(null)
   const [showLanding, setShowLanding] = useState(true)
   const [isInitialized, setIsInitialized] = useState(false)
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  const [isLoadingData, setIsLoadingData] = useState(false)
 
-  // Check for existing user session on mount
+  // Listen to Firebase auth state changes
   useEffect(() => {
-    const session = getUserSession()
-    if (session) {
-      setUser(session)
-      setShowLanding(false) // Hide landing if user session exists
-    } else if (!googleClientId) {
-      // Auto-create guest user if no Google Client ID is configured
-      const guestUser = {
-        id: 'guest-' + Date.now(),
-        email: 'guest@local',
-        name: 'Guest User',
-        picture: ''
+    const unsubscribe = onAuthStateChange((authUser) => {
+      setUser(authUser)
+      setIsInitialized(true)
+      
+      if (authUser) {
+        setShowLanding(false)
       }
-      saveUserSession(guestUser)
-      setUser(guestUser)
-      setShowLanding(false)
-    }
-    setIsInitialized(true)
-  }, [googleClientId])
+    })
 
-  // Load from localStorage on mount (after user is set)
-  const [sheets, setSheets] = useState(() => {
-    const session = getUserSession()
-    const saved = loadFromLocalStorage(session?.id)
-    if (saved && saved.sheets && saved.sheets.length > 0) {
-      return saved.sheets
-    }
-    return [{
-      id: 'sheet-1',
-      name: 'Main Project',
-      tasks: [],
-      customColumns: []
-    }]
-  })
+    return () => unsubscribe()
+  }, [])
+
+  // Initialize state with default values
+  const [sheets, setSheets] = useState([{
+    id: 'sheet-1',
+    name: 'Main Project',
+    tasks: [],
+    customColumns: []
+  }])
   
-  const [activeSheetId, setActiveSheetId] = useState(() => {
-    const session = getUserSession()
-    const saved = loadFromLocalStorage(session?.id)
-    if (saved && saved.activeSheetId) {
-      return saved.activeSheetId
-    }
-    return 'sheet-1'
-  })
+  const [activeSheetId, setActiveSheetId] = useState('sheet-1')
   
   // Track if we've loaded initial data to avoid saving during initial load
   const isInitialMount = useRef(true)
+  const isDataLoaded = useRef(false)
   
   const [isProcessing, setIsProcessing] = useState(false)
-  const [visibleColumns, setVisibleColumns] = useState(() => {
-    const session = getUserSession()
-    const saved = loadFromLocalStorage(session?.id)
-    return saved?.visibleColumns || {
-      task: true,
-      today: true,
-      startDate: true,
-      duration: true,
-      endDate: true,
-      owner: true,
-      timeline: true
-    }
+  const [visibleColumns, setVisibleColumns] = useState({
+    task: true,
+    today: true,
+    startDate: true,
+    duration: true,
+    endDate: true,
+    owner: true,
+    timeline: true
   })
   
-  // Auto-save to localStorage whenever data changes
+  // Load data from Firestore when user logs in
   useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false
+    if (user && !isDataLoaded.current) {
+      setIsLoadingData(true)
+      loadFromFirestore(user.id)
+        .then((saved) => {
+          if (saved) {
+            if (saved.sheets && saved.sheets.length > 0) {
+              setSheets(saved.sheets)
+            }
+            if (saved.activeSheetId) {
+              setActiveSheetId(saved.activeSheetId)
+            }
+            if (saved.visibleColumns) {
+              setVisibleColumns(saved.visibleColumns)
+            }
+          }
+          isDataLoaded.current = true
+          isInitialMount.current = true
+          setIsLoadingData(false)
+        })
+        .catch((error) => {
+          console.error('Error loading data from Firestore:', error)
+          isDataLoaded.current = true
+          isInitialMount.current = true
+          setIsLoadingData(false)
+        })
+    } else if (!user) {
+      // Reset when user logs out
+      isDataLoaded.current = false
+      setSheets([{
+        id: 'sheet-1',
+        name: 'Main Project',
+        tasks: [],
+        customColumns: []
+      }])
+      setActiveSheetId('sheet-1')
+    }
+  }, [user])
+  
+  // Auto-save to Firestore whenever data changes
+  useEffect(() => {
+    if (isInitialMount.current || !user || !isDataLoaded.current) {
+      if (isInitialMount.current) {
+        isInitialMount.current = false
+      }
       return
     }
     
-    // Save to localStorage (works for both logged in and guest users)
-    const userId = user?.id || 'guest'
-    
-    // Debounce saves to avoid excessive localStorage writes
-    const timeoutId = setTimeout(() => {
-      saveToLocalStorage({
-        sheets,
-        activeSheetId,
-        visibleColumns
-      }, userId)
-    }, 500)
+    // Debounce saves to avoid excessive Firestore writes
+    const timeoutId = setTimeout(async () => {
+      try {
+        await saveToFirestore({
+          sheets,
+          activeSheetId,
+          visibleColumns
+        }, user.id)
+      } catch (error) {
+        console.error('Error saving to Firestore:', error)
+      }
+    }, 1000) // 1 second debounce for Firestore
     
     return () => clearTimeout(timeoutId)
   }, [sheets, activeSheetId, visibleColumns, user])
-  
-  // Reload data when user logs in
-  useEffect(() => {
-    if (user) {
-      const saved = loadFromLocalStorage(user.id)
-      if (saved) {
-        if (saved.sheets && saved.sheets.length > 0) {
-          setSheets(saved.sheets)
-        }
-        if (saved.activeSheetId) {
-          setActiveSheetId(saved.activeSheetId)
-        }
-        if (saved.visibleColumns) {
-          setVisibleColumns(saved.visibleColumns)
-        }
-      }
-      isInitialMount.current = true
-    }
-  }, [user])
 
   const activeSheet = sheets.find(s => s.id === activeSheetId) || sheets[0]
   const tasks = activeSheet?.tasks || []
@@ -386,6 +388,31 @@ function App() {
     ))
   }, [activeSheetId])
 
+  const handleSave = useCallback(async () => {
+    if (!user) {
+      alert('Please sign in to save your project.')
+      return
+    }
+    
+    try {
+      await saveToFirestore({
+        sheets,
+        activeSheetId,
+        visibleColumns
+      }, user.id)
+      return true
+    } catch (error) {
+      console.error('Error saving:', error)
+      alert('Error saving project. Please try again.')
+      return false
+    }
+  }, [sheets, activeSheetId, visibleColumns, user])
+
+  const handleOpen = useCallback(() => {
+    // Open is the same as Import - opens a file picker
+    handleImport()
+  }, [handleImport])
+
   const handleExport = useCallback(() => {
     const success = exportToJSON({
       sheets,
@@ -419,11 +446,15 @@ function App() {
             setVisibleColumns(imported.visibleColumns)
           }
           // Save immediately after import
-          saveToLocalStorage({
-            sheets: imported.sheets,
-            activeSheetId: imported.activeSheetId || imported.sheets[0]?.id,
-            visibleColumns: imported.visibleColumns || visibleColumns
-          })
+          if (user) {
+            saveToFirestore({
+              sheets: imported.sheets,
+              activeSheetId: imported.activeSheetId || imported.sheets[0]?.id,
+              visibleColumns: imported.visibleColumns || visibleColumns
+            }, user.id).catch(error => {
+              console.error('Error saving imported data:', error)
+            })
+          }
           alert('Project imported successfully!')
         }
       } catch (error) {
@@ -434,18 +465,16 @@ function App() {
   }, [visibleColumns])
 
   const handleLogin = useCallback((userData) => {
-    setUser({
-      id: userData.sub,
-      email: userData.email,
-      name: userData.name,
-      picture: userData.picture
-    })
+    // User is set via onAuthStateChange, no need to set it here
+    // But we can trigger data load if needed
+    isDataLoaded.current = false
   }, [])
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
     if (window.confirm('Are you sure you want to sign out?')) {
-      signOut()
+      await firebaseSignOut()
       setUser(null)
+      setShowLanding(true)
       // Reset to default state
       setSheets([{
         id: 'sheet-1',
@@ -454,12 +483,52 @@ function App() {
         customColumns: []
       }])
       setActiveSheetId('sheet-1')
+      isDataLoaded.current = false
     }
   }, [])
 
+  // Keyboard shortcuts for File menu
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Check if user is typing in an input/textarea
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return
+      }
+
+      // Ctrl+S or Cmd+S - Save
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        handleSave()
+      }
+      // Ctrl+O or Cmd+O - Open
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+        e.preventDefault()
+        handleOpen()
+      }
+      // Ctrl+E or Cmd+E - Export
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+        e.preventDefault()
+        handleExport()
+      }
+      // Ctrl+I or Cmd+I - Import
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+        e.preventDefault()
+        handleImport()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleSave, handleOpen, handleExport, handleImport])
+
   // Don't render until initialized
   if (!isInitialized) {
-    return null
+    return (
+      <div className="app-loading">
+        <div className="spinner"></div>
+        <p>Loading...</p>
+      </div>
+    )
   }
 
   // Show landing page first if not logged in
@@ -467,23 +536,19 @@ function App() {
     return <LandingPage onGetStarted={() => setShowLanding(false)} />
   }
 
-  // Auto-create guest user if no Google Client ID and user clicked "Sign In"
-  useEffect(() => {
-    if (!user && !showLanding && !googleClientId && isInitialized) {
-      const guestUser = {
-        id: 'guest-' + Date.now(),
-        email: 'guest@local',
-        name: 'Guest User',
-        picture: ''
-      }
-      saveUserSession(guestUser)
-      setUser(guestUser)
-    }
-  }, [user, showLanding, googleClientId, isInitialized])
-
   // Show login screen if not authenticated (after landing page)
-  if (!user && !showLanding && googleClientId) {
-    return <Login onLogin={handleLogin} clientId={googleClientId} />
+  if (!user && !showLanding) {
+    return <Login onLogin={handleLogin} />
+  }
+
+  // Show loading state while loading user data
+  if (isLoadingData) {
+    return (
+      <div className="app-loading">
+        <div className="spinner"></div>
+        <p>Loading your projects...</p>
+      </div>
+    )
   }
 
   return (
@@ -500,34 +565,28 @@ function App() {
             </div>
           </div>
           <div className="header-actions">
-            <button 
-              className="header-btn" 
-              onClick={handleExport}
-              title="Export project to JSON file"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              Export
-            </button>
-            <button 
-              className="header-btn" 
-              onClick={handleImport}
-              title="Import project from JSON file"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-              </svg>
-              Import
-            </button>
+            <FileMenu
+              onSave={handleSave}
+              onOpen={handleOpen}
+              onExport={handleExport}
+              onImport={handleImport}
+            />
           </div>
         </div>
         <div className="save-indicator">
-          <span className="save-text">Auto-saved to browser • {user?.email || ''}</span>
+          <span className="save-text">Auto-saved to cloud • {user?.email || ''}</span>
+          <button 
+            className="header-btn logout-btn" 
+            onClick={handleLogout}
+            title="Sign out"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            Sign Out
+          </button>
         </div>
       </header>
       

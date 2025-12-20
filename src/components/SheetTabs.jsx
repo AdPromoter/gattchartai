@@ -34,7 +34,11 @@ function SheetTabs({ sheets, activeSheetId, onSelectSheet, onAddSheet, onRenameS
           <div
             key={sheet.id}
             className={`sheet-tab ${activeSheetId === sheet.id ? 'active' : ''}`}
-            onClick={() => !editingId && onSelectSheet(sheet.id)}
+            onClick={(e) => {
+              if (!editingId && e.target.closest('.sheet-tab-btn') === null) {
+                onSelectSheet(sheet.id)
+              }
+            }}
           >
             {editingId === sheet.id ? (
               <input

@@ -16,6 +16,17 @@
   transition: all 0.3s ease;
   border: 3px solid rgba(255, 255, 255, 0.1);
   color: white;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+@media (max-width: 768px) {
+  .ai-assistant-toggle {
+    bottom: 60px;
+    right: 16px;
+    width: 56px;
+    height: 56px;
+  }
 }
 
 .ai-assistant-toggle:hover {
@@ -30,6 +41,16 @@
 .ai-assistant-toggle.open {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+  bottom: auto;
+  top: 16px;
+  right: 16px;
+}
+
+@media (max-width: 768px) {
+  .ai-assistant-toggle.open {
+    top: 16px;
+    right: 16px;
+  }
 }
 
 .ai-pulse {
@@ -80,6 +101,20 @@
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid #2a2a2a;
   overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .ai-assistant-panel {
+    bottom: 60px;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100vh - 120px);
+    border-radius: 16px 16px 0 0;
+    border-left: none;
+    border-right: none;
+  }
 }
 
 .ai-assistant-panel.open {
@@ -370,5 +405,23 @@
 
 .ai-assistant-body::-webkit-scrollbar-thumb:hover {
   background: #4a4a4a;
+}
+
+/* Backdrop for mobile */
+.ai-assistant-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 998;
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .ai-assistant-backdrop {
+    display: block;
+  }
 }
 

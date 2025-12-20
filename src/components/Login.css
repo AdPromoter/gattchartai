@@ -77,6 +77,43 @@
   margin: 8px 0;
 }
 
+.google-signin-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid #dadce0;
+  background: #fff;
+  color: #3c4043;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  min-width: 240px;
+}
+
+.google-signin-button:hover:not(:disabled) {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  background: #f8f9fa;
+}
+
+.google-signin-button:active:not(:disabled) {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.google-signin-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.google-signin-button svg {
+  flex-shrink: 0;
+}
+
 .login-note {
   font-size: 13px;
   color: #888;

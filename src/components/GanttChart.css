@@ -10,6 +10,15 @@
   flex-direction: column;
 }
 
+@media (max-width: 768px) {
+  .gantt-chart-excel {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    box-shadow: none;
+  }
+}
+
 .gantt-toolbar {
   padding: 8px 16px;
   background: #f9f9f9;
@@ -50,6 +59,16 @@
   flex: 1;
   overflow: auto;
   max-height: calc(100vh - 250px);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; /* Prevent bounce */
+}
+
+@media (max-width: 768px) {
+  .gantt-table-wrapper {
+    max-height: calc(100vh - 200px);
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .gantt-table {
@@ -174,9 +193,21 @@
   background: #f9f9f9;
 }
 
-.gantt-table tbody tr.completed {
-  background: #f0f9ff;
-  opacity: 0.8;
+/* Status-based row coloring */
+.gantt-table tbody tr.task-row.status-planned {
+  background: #ffebee;
+}
+
+.gantt-table tbody tr.task-row.status-ongoing {
+  background: #fff9c4;
+}
+
+.gantt-table tbody tr.task-row.status-completed {
+  background: #e8f5e9;
+}
+
+.gantt-table tbody tr.task-row:hover {
+  opacity: 0.9;
 }
 
 .gantt-table td {
@@ -297,16 +328,20 @@
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
+/* Gantt bar color coding: Red (not done), Yellow (ongoing), Green (done) */
+.gantt-bar.gantt-bar-planned,
 .gantt-bar.planned {
-  background: #2196f3;
+  background: #f44336;
   color: white;
 }
 
+.gantt-bar.gantt-bar-ongoing,
 .gantt-bar.ongoing {
-  background: #ff9800;
-  color: white;
+  background: #ffeb3b;
+  color: #333;
 }
 
+.gantt-bar.gantt-bar-completed,
 .gantt-bar.completed {
   background: #4caf50;
   color: white;
